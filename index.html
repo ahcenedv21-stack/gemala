@@ -3192,20 +3192,29 @@
         const project = state.projects.find(p => p.id == pid);
         if (!project) return;
         const list = groups[pid];
-        const inv = {};
-        list.forEach(p => { inv[p.invoiceNumber] = inv[p.invoiceNumber] || { amount: p.invoiceAmount, paid: 0 }; });
-        const totalInv = Object.values(inv).reduce((a, i) => a + i.amount, 0);
+
+        // مبلغ الصفقة الثابت من جدول العقود
+        const projectBids = state.bids.filter(b => b.projectId == pid);
+        const dealAmount = projectBids.length
+          ? projectBids.reduce((a, b) => a + (b.amount || 0), 0)
+          : Math.max(...list.map(p => p.invoiceAmount || 0), 0);
+
+        // إجمالي المدفوع للمشروع
         const totalPaid = list.reduce((a, p) => a + p.paymentAmount, 0);
+        const totalRemaining = Math.max(dealAmount - totalPaid, 0);
+
+        // صف إجمالي المشروع
         const g = document.createElement('tr');
         g.className = 'group-row';
         g.style.fontWeight = 'bold';
-        g.innerHTML = `<td colspan="2"><i class="fas fa-folder-open"></i> ${esc(project.name)}</td><td>إجمالي المشروع</td><td>—</td><td>—</td><td>${formatCurrency(totalInv)}</td><td>${formatCurrency(totalPaid)}</td><td>${formatCurrency(Math.max(totalInv - totalPaid, 0))}</td><td colspan="3">—</td>`;
+        g.innerHTML = `<td colspan="2"><i class="fas fa-folder-open"></i> ${esc(project.name)}</td><td>إجمالي المشروع</td><td>—</td><td>—</td><td>${formatCurrency(dealAmount)}</td><td>${formatCurrency(totalPaid)}</td><td>${formatCurrency(totalRemaining)}</td><td colspan="3">—</td>`;
         tbody.appendChild(g);
+
+        // الباقي التنازلي: يبدأ من مبلغ الصفقة وينقص مع كل دفعة
+        let runningRem = dealAmount;
+
         list.forEach(p => {
-          const i = inv[p.invoiceNumber];
-          const first = i.paid === 0;
-          i.paid += p.paymentAmount;
-          const rem = Math.max(i.amount - i.paid, 0);
+          runningRem = Math.max(runningRem - p.paymentAmount, 0);
           const row = document.createElement('tr');
           row.innerHTML = `
             <td>${n++}</td>
@@ -3213,9 +3222,9 @@
             <td>${esc(p.invoiceNumber)}</td>
             <td>${formatDate(p.invoiceDate)}</td>
             <td>${esc(p.beneficiary)}</td>
-            <td>${first ? formatCurrency(p.invoiceAmount) : '—'}</td>
+            <td>${formatCurrency(dealAmount)}</td>
             <td>${formatCurrency(p.paymentAmount)}</td>
-            <td><span class="countdown ${rem > 0 ? 'negative' : 'positive'}">${rem > 0 ? formatCurrency(rem) : 'مسدّدة'}</span></td>
+            <td><span class="countdown ${runningRem > 0 ? 'negative' : 'positive'}">${runningRem > 0 ? formatCurrency(runningRem) : 'مسدّدة'}</span></td>
             <td>${formatDate(p.payDate)}</td>
             <td>${esc(p.paymentMethod)}</td>
             <td class="table-actions">
